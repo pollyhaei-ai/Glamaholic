@@ -17,7 +17,7 @@ namespace Glamaholic.Ui.Helpers {
 
             var addon = Service.GameGui.GetAddonByName(Util.PlateAddon, 1);
             // ReSharper disable once ConditionIsAlwaysTrueOrFalse
-            if (addon == null || !addon.IsVisible) {
+            if (addon.IsNull || !addon.IsVisible) {
                 return;
             }
 
@@ -25,7 +25,7 @@ namespace Glamaholic.Ui.Helpers {
         }
 
         private void DrawDropdown() {
-            if (ImGui.Selectable($"Open {Plugin.Name}")) {
+            if (ImGui.Selectable($"開啟 {Plugin.Name}")) {
                 this.Ui.OpenMainInterface();
             }
 

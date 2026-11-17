@@ -1,13 +1,17 @@
-﻿<Project Sdk="Dalamud.NET.Sdk/15.0.0">
+﻿<Project Sdk="Dalamud.NET.Sdk/13.1.0">
 
     <PropertyGroup>
-        <TargetFramework>net10.0-windows7.0</TargetFramework>
-        <Version>1.15.2</Version>
+        <TargetFramework>net9.0-windows7.0</TargetFramework>
+        <Version>1.15.2-tw</Version>
+        <AssemblyVersion>1.15.2.0</AssemblyVersion>
+        <FileVersion>1.15.2.0</FileVersion>
+        <InformationalVersion>1.15.2-tw</InformationalVersion>
         <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
         <Nullable>enable</Nullable>
         <ProduceReferenceAssembly>false</ProduceReferenceAssembly>
         <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
         <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
+        <DalamudApiLevel>13</DalamudApiLevel>
     </PropertyGroup>
 
     <PropertyGroup>
@@ -37,10 +41,6 @@
 
     <ItemGroup>
       <None Include=".editorconfig" />
-    </ItemGroup>
-
-    <ItemGroup>
-      <ProjectReference Include="..\thirdparty\Glamourer.Api\Glamourer.Api.csproj" />
     </ItemGroup>
 
 </Project>

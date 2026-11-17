@@ -23,7 +23,12 @@ namespace Glamaholic.Ui {
 
             var info = ModelInfo(item.ModelMain);
 
-            foreach (var row in Service.DataManager.GetExcelSheet<Item>()!) {
+            var sheet = GameData.Sheet<Item>();
+            if (sheet == null) {
+                return;
+            }
+
+            foreach (var row in sheet) {
                 if (Util.IsItemSkipped(row) || row.EquipSlotCategory.RowId != this.Item.EquipSlotCategory.RowId || info != ModelInfo(row.ModelMain)) {
                     continue;
                 }
@@ -37,7 +42,7 @@ namespace Glamaholic.Ui {
             ImGui.SetNextWindowPos(ImGui.GetMousePos(), ImGuiCond.Appearing);
 
             const ImGuiWindowFlags flags = ImGuiWindowFlags.NoSavedSettings;
-            if (!ImGui.Begin($"Alternative Finder: {this.Item.Name}##{this.Id}", ref this.Visible, flags)) {
+            if (!ImGui.Begin($"同模型：{this.Item.Name}##{this.Id}", ref this.Visible, flags)) {
                 ImGui.End();
                 return;
             }
@@ -57,8 +62,8 @@ namespace Glamaholic.Ui {
 
             ImGui.NextColumn();
 
-            ImGui.TextUnformatted("Click: link to chat");
-            ImGui.TextUnformatted("Right-click: try on");
+            ImGui.TextUnformatted("點擊：連結到聊天");
+            ImGui.TextUnformatted("右鍵：試穿");
 
             ImGui.Columns();
 

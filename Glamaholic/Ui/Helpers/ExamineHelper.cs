@@ -19,7 +19,7 @@ namespace Glamaholic.Ui.Helpers {
 
             var examineAddon = Service.GameGui.GetAddonByName("CharacterInspect", 1);
             // ReSharper disable once ConditionIsAlwaysTrueOrFalse
-            if (examineAddon == null || !examineAddon.IsVisible) {
+            if (examineAddon.IsNull || !examineAddon.IsVisible) {
                 return;
             }
 
@@ -27,17 +27,17 @@ namespace Glamaholic.Ui.Helpers {
         }
 
         private void DrawDropdown() {
-            if (ImGui.Selectable($"Open {Plugin.Name}")) {
+            if (ImGui.Selectable($"開啟 {Plugin.Name}")) {
                 this.Ui.OpenMainInterface();
             }
 
             if (ImGui.IsWindowAppearing()) {
-                this._nameInput = this.Ui.Plugin.Functions.ExamineName ?? "Copied glamour";
+                this._nameInput = this.Ui.Plugin.Functions.ExamineName ?? "複製的外觀";
             }
 
             HelperUtil.DrawCreatePlateMenu(this.Ui, GetItems, ref this._nameInput);
 
-            if (ImGui.Selectable("Try on")) {
+            if (ImGui.Selectable("試穿")) {
                 var items = GetItems();
                 if (items != null) {
                     this.Ui.TryOn(items.Values);
