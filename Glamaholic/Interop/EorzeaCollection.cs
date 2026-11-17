@@ -18,8 +18,8 @@ namespace Glamaholic.Interop {
         private static bool HasLoggedError { get; set; } = false;
 
         public static async Task<SavedPlate?> ImportFromURL(string userFacingURL) {
-            var items = DataCache.EquippableItems.Value;
-            var stains = DataCache.StainsByName.Value;
+            var items = DataCache.EnglishEquippableItems.Value;
+            var stains = DataCache.EnglishStainsByName.Value;
 
             string? url = ConvertURLForAPI(userFacingURL);
             if (url == null) {

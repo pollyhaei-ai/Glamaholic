@@ -1,76 +1,91 @@
 ﻿using Dalamud.Game.Command;
 using Dalamud.Plugin;
-using Glamourer.Api.Enums;
-using Glamourer.Api.IpcSubscribers;
+using Dalamud.Plugin.Ipc;
 using System;
+using System.Collections.Generic;
 using System.Threading.Tasks;
 
 namespace Glamaholic.Interop {
+    /// <summary>
+    /// Optional Glamourer IPC. Channel names match Glamourer.Api
+    /// (Glamourer.SetItem.V3 / Glamourer.RevertState). Missing Glamourer must not
+    /// throw during plugin load.
+    /// </summary>
     internal class Glamourer {
-        private static SetItem _SetItem { get; set; } = null!;
-        private static RevertState _RevertState { get; set; } = null!;
+        private const string SetItemLabel = "Glamourer.SetItem.V3";
+        private const string RevertStateLabel = "Glamourer.RevertState";
+        private const ulong ApplyEquipment = 0x02;
 
-        private static bool Initialized { get; set; } = false;
-        private static bool Available { get; set; } = false;
+        private static ICallGateSubscriber<int, byte, ulong, IReadOnlyList<byte>, uint, ulong, int>? _setItem;
+        private static ICallGateSubscriber<int, uint, ulong, int>? _revertState;
+
+        private static bool Initialized { get; set; }
+        private static bool Available { get; set; }
 
         public static void TryOn(int playerIndex, SavedPlate plate) {
-            if (!IsAvailable())
+            if (!IsAvailable() || _setItem == null || _revertState == null) {
                 return;
+            }
 
             try {
                 Service.Framework.Run(() => {
-                    _RevertState.Invoke(playerIndex, flags: ApplyFlag.Equipment);
+                    _revertState.InvokeFunc(playerIndex, 0, ApplyEquipment);
 
                     foreach (var slot in Enum.GetValues<PlateSlot>()) {
                         if (!plate.Items.TryGetValue(slot, out var item)) {
-                            if (!plate.FillWithNewEmperor)
+                            if (!plate.FillWithNewEmperor) {
                                 continue;
+                            }
 
                             uint empItem = Util.GetEmperorItemForSlot(slot);
-                            if (empItem != 0)
-                                _SetItem.Invoke(playerIndex, ConvertSlot(slot), empItem, [0, 0]);
+                            if (empItem != 0) {
+                                _setItem.InvokeFunc(playerIndex, ConvertSlot(slot), empItem, [0, 0], 0, ApplyEquipment);
+                            }
 
                             continue;
                         }
 
-                        _SetItem.Invoke(playerIndex, ConvertSlot(slot), item.ItemId, [item.Stain1, item.Stain2]);
+                        _setItem.InvokeFunc(playerIndex, ConvertSlot(slot), item.ItemId, [item.Stain1, item.Stain2], 0, ApplyEquipment);
                     }
                 });
-            } catch (Exception) { }
-        }
-
-        public static void RevertState(int playerIndex) {
-            if (!IsAvailable()) return;
-
-            try {
-                Service.Framework.Run(() => {
-                    _RevertState.Invoke(playerIndex, flags: ApplyFlag.Equipment);
-                });
-            } catch (Exception) { }
-        }
-
-        private static ApiEquipSlot ConvertSlot(PlateSlot slot) {
-            switch (slot) {
-                case PlateSlot.LeftRing:
-                    return ApiEquipSlot.LFinger;
-
-                case >= (PlateSlot) 5:
-                    return (ApiEquipSlot) ((int) slot + 2);
-
-                default:
-                    return (ApiEquipSlot) ((int) slot + 1);
+            } catch (Exception ex) {
+                Service.Log.Debug(ex, "Glamourer TryOn IPC failed");
             }
         }
 
-        private static void TryOnCommand(string _, string args) {
-            if (!IsAvailable())
+        public static void RevertState(int playerIndex) {
+            if (!IsAvailable() || _revertState == null) {
                 return;
+            }
+
+            try {
+                Service.Framework.Run(() => {
+                    _revertState.InvokeFunc(playerIndex, 0, ApplyEquipment);
+                });
+            } catch (Exception ex) {
+                Service.Log.Debug(ex, "Glamourer RevertState IPC failed");
+            }
+        }
+
+        // ApiEquipSlot values from Glamourer.Api. Plate slots skip the removed belt.
+        private static byte ConvertSlot(PlateSlot slot) {
+            return slot switch {
+                PlateSlot.LeftRing => 14,
+                >= (PlateSlot) 5 => (byte) ((int) slot + 2),
+                _ => (byte) ((int) slot + 1),
+            };
+        }
+
+        private static void TryOnCommand(string _, string args) {
+            if (!IsAvailable()) {
+                return;
+            }
 
             string url = args.Trim();
             if (url.Length == 0 || !EorzeaCollection.IsEorzeaCollectionURL(url)) {
                 url = Util.GetClipboardText();
                 if (url.Length == 0 || !EorzeaCollection.IsEorzeaCollectionURL(url)) {
-                    Service.ChatGui.PrintError("[Glamaholic] No valid Eorzea Collection URL provided or found in clipboard");
+                    Service.ChatGui.PrintError("[Glamaholic] 沒有可用的 Eorzea Collection 網址（指令或剪貼簿）。");
                     return;
                 }
             }
@@ -78,7 +93,7 @@ namespace Glamaholic.Interop {
             Task.Run(async () => {
                 var import = await EorzeaCollection.ImportFromURL(url);
                 if (import == null) {
-                    Service.ChatGui.PrintError("[Glamaholic] Failed to import glamour from Eorzea Collection URL, check /xllog for more information.");
+                    Service.ChatGui.PrintError("[Glamaholic] 無法從 Eorzea Collection 網址匯入，請看 /xllog。");
                     return;
                 }
 
@@ -87,39 +102,48 @@ namespace Glamaholic.Interop {
         }
 
         public static void Initialize(IDalamudPluginInterface pluginInterface) {
-            if (Initialized)
+            if (Initialized) {
                 return;
+            }
 
-            _SetItem = new SetItem(pluginInterface);
-            _RevertState = new RevertState(pluginInterface);
+            try {
+                _setItem = pluginInterface.GetIpcSubscriber<int, byte, ulong, IReadOnlyList<byte>, uint, ulong, int>(SetItemLabel);
+                _revertState = pluginInterface.GetIpcSubscriber<int, uint, ulong, int>(RevertStateLabel);
+            } catch (Exception ex) {
+                Service.Log.Warning(ex, "Glamourer IPC subscribers could not be created; Glamourer features stay disabled.");
+                _setItem = null;
+                _revertState = null;
+            }
 
             Initialized = true;
-
             RefreshStatus(pluginInterface);
         }
 
         public static void RefreshStatus(IDalamudPluginInterface pluginInterface) {
             var prev = Available;
-
             Available = false;
 
-            foreach (var plugin in pluginInterface.InstalledPlugins) {
-                if (plugin.Name == "Glamourer") {
-                    Available = plugin.IsLoaded;
-                    break;
+            try {
+                foreach (var plugin in pluginInterface.InstalledPlugins) {
+                    if (plugin.InternalName == "Glamourer" || plugin.Name == "Glamourer") {
+                        Available = plugin.IsLoaded;
+                        break;
+                    }
                 }
+            } catch (Exception ex) {
+                Service.Log.Debug(ex, "Could not query installed plugins for Glamourer");
+                Available = false;
             }
 
-            if (prev == Available)
+            if (prev == Available) {
                 return;
+            }
 
-            // per PAC guidelines, this command must only show up if the user has Glamourer loaded already
-            if (Available) {
-                Service.CommandManager.AddHandler("/tryonglamourer", new CommandInfo(TryOnCommand) { 
+            if (Available && IsIPCValid()) {
+                Service.CommandManager.AddHandler("/tryonglamourer", new CommandInfo(TryOnCommand) {
                     ShowInHelp = true,
-                    HelpMessage = "Try on an EC glamour using Glamourer, link can be provided in the command or in the clipboard"
+                    HelpMessage = "用 Glamourer 試穿 Eorzea Collection 外觀。網址可寫在指令後面，或先複製到剪貼簿。",
                 });
-
                 return;
             }
 
@@ -131,7 +155,12 @@ namespace Glamaholic.Interop {
         }
 
         public static bool IsIPCValid() {
-            return _SetItem.Valid && _RevertState.Valid;
+            try {
+                return _setItem is ICallGateSubscriber setItem && setItem.HasFunction
+                    && _revertState is ICallGateSubscriber revertState && revertState.HasFunction;
+            } catch (Exception) {
+                return false;
+            }
         }
     }
 }

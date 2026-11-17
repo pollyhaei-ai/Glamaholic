@@ -1,53 +1,40 @@
-# How to use Glamaholic
+# 如何使用 Glamaholic
 
-Thank you for installing Glamaholic! This plugin can act as your home for
-glamours, since you can store as many as you would like in it. To get started,
-try reading the section called "Adding glamour plates". Keep in mind that you'll
-need to be editing your plates at the Glamour Dresser to be able to copy those
-plates into the plugin or apply new plates.
+感謝安裝 Glamaholic。這個外掛可以保存任意數量的投影範本。請先看「新增投影範本」。
+要把遊戲裡的範本複製進來，或把保存的範本套回遊戲，必須先在投影台打開投影範本編輯畫面。
 
 ---
 
-# Adding glamour plates
+# 新增投影範本
 
-- From the main Glamaholic window, click "Plates" and then "New" to create an
-empty glamour plate to edit from scratch.
+- 在 Glamaholic 主視窗點「投影範本」，再點「新增」，可以從空白範本開始編輯。
 
-- From the main Glamaholic window, click "Plates", hover over "Import", paste
-a shared plate, then press Enter to import a shared plate.
+- 在主視窗點「投影範本」，移到「從剪貼簿匯入」，貼上別人分享的範本後按 Enter。
 
-- Click on the Glamaholic menu at the top left of the Glamour Plate Creation
-window, then hover over "Create glamour plate" to import plates from the game.
+- 打開投影台的投影範本編輯畫面，點左上角的 Glamaholic 選單，再移到「建立投影範本」，即可把遊戲裡的範本存進來。
 
-- Open the Examine window a character, click the "Glamaholic" menu, then click
-"Create glamour plate" to create a glamour plate from someone else's outfit.
+- 對角色打開檢查裝備視窗，點 Glamaholic 選單，再點「建立投影範本」，可以依對方的外觀建立範本。
 
 ---
 
-# Finding items that share a model
+# 尋找相同模型的物品
 
-You can search for items that share the same model as another item by either
-middle-clicking (click with mouse wheel) or holding Control and left-clicking on 
-any item name or item icon. This will open a window listing items with the same
-model where you can link or try them on.
+在物品名稱或圖示上按滑鼠中鍵，或按住 Ctrl 再按左鍵，會列出使用相同模型的物品。你可以從清單把物品連結到聊天，或試穿。
 
 ---
 
-# Advanced search
+# 進階搜尋
 
-The plate search box can be used to search for more than just plate names. Try
-the options below.
+範本搜尋框不只能搜名稱。職業縮寫、職業名稱、物品名稱都來自遊戲資料表。
 
-- j:job can be used to search for a job by its abbreviation. Example: j:pld
+- j:職業 可搜尋職業縮寫或職業名稱。例如 j:pld 或 j:騎士
 
-- lvl:maxLevel can be used to search for plates equippable up to a specific
-level. Example: lvl:1
+- lvl:等級上限 可搜尋能裝備到該等級的範本。例如 lvl:1
 
-- t:tag can be used to search by tag.
+- t:標籤 可依標籤搜尋。
 
-- !t:tag can be used to exclude tags.
+- !t:標籤 可排除標籤。
 
-- id:itemId can be used to search for plates with the given item ID.
+- id:物品編號 可搜尋含有該物品編號的範本。
 
-- i:itemName can be used to search for plates with the given item name. Example:
-i:skallic
+- i:物品名稱 可依物品名稱搜尋。請輸入遊戲內的繁體中文名稱。

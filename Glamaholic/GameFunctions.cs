@@ -1,10 +1,7 @@
-using Dalamud.Game.Chat;
 using Dalamud.Game.Text;
 using Dalamud.Game.Text.SeStringHandling;
 using Dalamud.Game.Text.SeStringHandling.Payloads;
-using Dalamud.Hooking;
 using Dalamud.Plugin.Services;
-using Dalamud.Utility.Signatures;
 using FFXIVClientStructs.FFXIV.Client.Game;
 using FFXIVClientStructs.FFXIV.Client.Game.UI;
 using FFXIVClientStructs.FFXIV.Client.UI.Agent;
@@ -19,76 +16,37 @@ using Cabinet = FFXIVClientStructs.FFXIV.Client.Game.UI.Cabinet;
 
 namespace Glamaholic {
     internal unsafe class GameFunctions : IDisposable {
-        #region Dynamic
-        private static class FunctionDelegates {
-            internal unsafe delegate int GetCabinetItemIdDelegate(Cabinet* _this, uint baseItemId);
-        }
-
-        /* 
-         * Returns the cabinet id for an item in the Armoire or -1 if not found.
-         * 
-         * _this should always be UIState::Cabinet
-         * 
-         * Updating:
-         * - Xrefs:
-         *   - AgentCabinet_ReceiveEvent: before call to SetSelectedItemData
-         *   - ...
-         */
-        [Signature("E8 ?? ?? ?? ?? 44 8B 0B 44 8B C0")]
-        private readonly FunctionDelegates.GetCabinetItemIdDelegate GetCabinetItemId = null!;
-
-        #endregion
-
         private Plugin Plugin { get; }
         private readonly List<uint> _filterIds = new();
         private static List<PrismBoxCachedItem> _cachedDresserItems = [];
         private static int _dresserItemSlotsUsed = 0;
 
-        private SavedPlate _retryLoadPlate = null;
+        private SavedPlate? _retryLoadPlate;
         private int _retryLoadPlateCount = 0;
-        
-        private Hook<AgentMiragePrismMiragePlate.Delegates.SetSelectedItemStains> _setSelectedItemStainsHook;
+        private Dictionary<uint, int>? _cabinetIdsByItem;
+        private bool _reportedMissingDyeSheet;
+        private bool _reportedTryOnFailure;
+        private bool _reportedLoadFailure;
 
         internal GameFunctions(Plugin plugin) {
             this.Plugin = plugin;
-            Service.GameInteropProvider.InitializeFromAttributes(this);
 
-            Service.ChatGui.ChatMessage += this.OnChat;
+            Service.ChatGui.CheckMessageHandled += this.OnChat;
             Service.Framework.Update += OnFrameworkUpdate;
-
-            _setSelectedItemStainsHook = Service.GameInteropProvider
-                .HookFromAddress<AgentMiragePrismMiragePlate.Delegates.SetSelectedItemStains>(
-                    AgentMiragePrismMiragePlate.MemberFunctionPointers.SetSelectedItemStains,
-                    SetSelectedItemStainsHook);
-            //_setSelectedItemStainsHook.Enable();
         }
 
         public void Dispose() {
-            Service.ChatGui.ChatMessage -= this.OnChat;
+            Service.ChatGui.CheckMessageHandled -= this.OnChat;
             Service.Framework.Update -= OnFrameworkUpdate;
-            _setSelectedItemStainsHook.Disable();
-            _setSelectedItemStainsHook.Dispose();
         }
 
-        private unsafe void SetSelectedItemStainsHook(
-            AgentMiragePrismMiragePlate* self,
-            InventoryItem* item0,
-            byte pendingStain0Id,
-            uint pendingStain0ItemId,
-            InventoryItem* item1,
-            byte pendingStain1Id,
-            uint pendingStain1ItemId) {
-            Service.Log.Debug($"SetSelectedItemStains({(nint)item0}, {pendingStain0Id}, {pendingStain0ItemId}, {(nint)item1}, {pendingStain1Id}, {pendingStain1ItemId})");
-            _setSelectedItemStainsHook.Original(self, item0, pendingStain0Id, pendingStain0ItemId, item1, pendingStain1Id, pendingStain1ItemId);
-        }
-        
-        private void OnChat(IHandleableChatMessage msg) {
-            if (this._filterIds.Count == 0 || msg.LogKind != XivChatType.SystemMessage) {
+        private void OnChat(XivChatType type, int timestamp, ref SeString sender, ref SeString message, ref bool isHandled) {
+            if (this._filterIds.Count == 0 || type != XivChatType.SystemMessage) {
                 return;
             }
 
-            if (msg.Message.Payloads.Any(payload => payload is ItemPayload item && this._filterIds.Remove(item.ItemId))) {
-                msg.PreventOriginal();
+            if (message.Payloads.Any(payload => payload is ItemPayload item && this._filterIds.Remove(item.ItemId))) {
+                isHandled = true;
             }
         }
 
@@ -192,12 +150,33 @@ namespace Glamaholic {
         }
 
         internal unsafe bool IsInArmoire(uint itemId) {
-            var row = Service.DataManager.GetExcelSheet<Lumina.Excel.Sheets.Cabinet>()!.FirstOrNull(row => row.Item.RowId == itemId);
-            if (row == null) {
+            var cabinetId = CabinetIdForItem(itemId);
+            if (cabinetId < 0) {
                 return false;
             }
 
-            return this.Armoire->IsItemInCabinet(row.Value.RowId);
+            return this.Armoire->IsItemInCabinet(cabinetId);
+        }
+
+        // Cabinet sheet row id for an item. Replaces the unconfirmed GetCabinetItemId signature.
+        private int CabinetIdForItem(uint itemId) {
+            if (this._cabinetIdsByItem == null) {
+                this._cabinetIdsByItem = new Dictionary<uint, int>();
+                var sheet = GameData.Sheet<Lumina.Excel.Sheets.Cabinet>();
+                if (sheet == null) {
+                    Service.Log.Warning("Cabinet sheet unavailable; armoire item lookup is disabled.");
+                    return -1;
+                }
+
+                foreach (var row in sheet) {
+                    var linked = row.Item.RowId;
+                    if (linked != 0) {
+                        this._cabinetIdsByItem.TryAdd(linked, (int) row.RowId);
+                    }
+                }
+            }
+
+            return this._cabinetIdsByItem.TryGetValue(itemId, out var id) ? id : -1;
         }
 
         internal unsafe void LoadPlate(SavedPlate plate) {
@@ -217,6 +196,7 @@ namespace Glamaholic {
             bool needsRetry = false;
 
             var initialSlot = data->SelectedItemIndex;
+            try {
             foreach (var slot in Enum.GetValues<PlateSlot>()) {
                 if (!plate.Items.TryGetValue(slot, out var wantedItem)) {
                     if (!plate.FillWithNewEmperor)
@@ -294,6 +274,15 @@ namespace Glamaholic {
             }
 
             Plugin.LogTroubleshooting("End LoadPlate()");
+            } catch (Exception ex) {
+                _retryLoadPlate = null;
+                _retryLoadPlateCount = 0;
+                Service.Log.Error(ex, "LoadPlate failed");
+                if (!this._reportedLoadFailure) {
+                    this._reportedLoadFailure = true;
+                    Service.ChatGui.PrintError("[Glamaholic] 套用投影配裝時發生錯誤，已停止這次套用。請開著投影台編輯畫面再試。若仍失敗，代表此客戶端的投影台函式與目前結構不符。詳情見 /xllog。");
+                }
+            }
         }
 
         internal SourcedGlamourItem? FindBestItemSource(AgentMiragePrismMiragePlate* agent, PlateSlot slot, SavedGlamourItem wantedItem) {
@@ -332,8 +321,8 @@ namespace Glamaholic {
                 return null;
             }
 
-            int cabinetId = GetCabinetItemId(Armoire, wantedItem.ItemId);
-            bool isInCabinet = cabinetId != -1 && Armoire->IsItemInCabinet((uint) cabinetId);
+            int cabinetId = CabinetIdForItem(wantedItem.ItemId);
+            bool isInCabinet = cabinetId != -1 && Armoire->IsItemInCabinet(cabinetId);
             
             if (plateItem == null && prismBoxItem == null && !isInCabinet) {
                 Plugin.LogTroubleshooting($"Skipping {slot}: could not find item {wantedItem.ItemId} ({wantedItem.Stain1}, {wantedItem.Stain2})");
@@ -468,7 +457,7 @@ namespace Glamaholic {
             
             if (isInCabinet && bestScore < 0) {
                 result.Source = SourcedGlamourItem.SourceType.Cabinet;
-                result.SlotOrId = (uint) GetCabinetItemId(Armoire, wantedItem.ItemId);
+                result.SlotOrId = (uint) CabinetIdForItem(wantedItem.ItemId);
                 result.ItemId = wantedItem.ItemId;
                 result.Stain1 = 0;
                 result.Stain2 = 0;
@@ -486,16 +475,16 @@ namespace Glamaholic {
 
         private unsafe InventoryItem* SelectStainItem(byte stainId, Dictionary<(uint, uint), uint> usedStains, out uint bestItemId) {
             InventoryManager* inventory = InventoryManager.Instance();
-            Stain? stainRow = Service.DataManager.GetExcelSheet<Lumina.Excel.Sheets.Stain>()!.GetRowOrDefault(stainId);
-
-            var stainItems = stainRow!.Value.Item;
+            var dyeItemIds = DataCache.DyeItemIds(stainId);
+            bestItemId = dyeItemIds.Length > 0 ? dyeItemIds[0] : 0;
+            if (stainId != 0 && dyeItemIds.Length == 0 && GameData.Sheet<StainTransient>() == null) {
+                this.ReportMissingDyeSheet();
+            }
 
             InventoryItem* item = null;
 
-            bestItemId = stainItems[0].RowId;
-            
-            foreach (var stainItem in stainItems) {
-                if (stainItem.Value.RowId == 0)
+            foreach (var dyeItemId in dyeItemIds) {
+                if (dyeItemId == 0)
                     continue;
 
                 foreach (var type in PlayerInventories) {
@@ -507,7 +496,7 @@ namespace Glamaholic {
                         (uint, uint) address = ((uint) type, (uint) i);
                         InventoryItem invItem = inv->Items[i];
 
-                        if (invItem.ItemId != stainItem.Value.RowId)
+                        if (invItem.ItemId != dyeItemId)
                             continue;
 
                         if (usedStains.TryGetValue(address, out var numUsed) && numUsed >= invItem.Quantity)
@@ -556,7 +545,39 @@ namespace Glamaholic {
                 this._filterIds.Add(itemId);
             }
 
-            AgentTryon.TryOn(0, itemId % Util.HqItemOffset, stainId, stainId2);
+            try {
+                AgentTryon.TryOn(0, itemId % Util.HqItemOffset, stainId, stainId2, 0, false);
+            } catch (Exception ex) {
+                Service.Log.Error(ex, "AgentTryon.TryOn failed");
+                if (!this._reportedTryOnFailure) {
+                    this._reportedTryOnFailure = true;
+                    Service.ChatGui.PrintError("[Glamaholic] 試穿函式無法呼叫，已停用試穿。不會改寫未確認的記憶體。");
+                }
+            }
+        }
+
+        internal void NotifyUnconfirmedTryOnSave(int itemCount) {
+            if (itemCount < 2 || this._reportedTryOnFailure) {
+                return;
+            }
+
+            if (this._tryOnSaveNoticeShown) {
+                return;
+            }
+
+            this._tryOnSaveNoticeShown = true;
+            Service.ChatGui.Print("[Glamaholic] 此客戶端的 AgentTryon 沒有已確認的「保存外觀」欄位，因此不會改寫該記憶體。若整套試穿只留下最後一件，請先在遊戲試衣間打開保存外觀，再試一次。");
+        }
+
+        private bool _tryOnSaveNoticeShown;
+
+        private void ReportMissingDyeSheet() {
+            if (this._reportedMissingDyeSheet) {
+                return;
+            }
+
+            this._reportedMissingDyeSheet = true;
+            Service.ChatGui.PrintError("[Glamaholic] 找不到染色道具對照表（StainTransient）。投影台物品仍會嘗試套用，但不會猜測染色道具編號。");
         }
 
         internal struct PrismBoxCachedItem {

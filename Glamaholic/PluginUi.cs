@@ -1,5 +1,4 @@
 ﻿using Dalamud.Interface.Textures.TextureWraps;
-using FFXIVClientStructs.FFXIV.Client.UI.Agent;
 using Glamaholic.Ui;
 using Glamaholic.Ui.Helpers;
 using System;
@@ -77,21 +76,11 @@ namespace Glamaholic {
         internal void SwitchPlate(Guid plateId, bool scrollTo = false) =>
             this.MainInterface.SwitchPlate(plateId, scrollTo);
 
-        internal unsafe void TryOn(IEnumerable<SavedGlamourItem> items) {
-            void SetTryOnSave(bool save) {
-                var tryOnAgent = AgentTryon.Instance();
-                if (tryOnAgent != null)
-                    *(byte*) ((nint) tryOnAgent + 0x366) = (byte) (save ? 1 : 0);
-            }
-
-            SetTryOnSave(false);
-            foreach (var mirage in items) {
-                if (mirage.ItemId == 0) {
-                    continue;
-                }
-
+        internal void TryOn(IEnumerable<SavedGlamourItem> items) {
+            var list = items.Where(mirage => mirage.ItemId != 0).ToList();
+            this.Plugin.Functions.NotifyUnconfirmedTryOnSave(list.Count);
+            foreach (var mirage in list) {
                 this.Plugin.Functions.TryOn(mirage.ItemId, mirage.Stain1, mirage.Stain2);
-                SetTryOnSave(true);
             }
         }
     }

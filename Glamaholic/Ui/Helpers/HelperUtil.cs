@@ -22,8 +22,8 @@ namespace Glamaholic.Ui.Helpers {
                                                             | ImGuiWindowFlags.AlwaysAutoResize
                                                             | ImGuiWindowFlags.NoDocking;
 
-        internal static unsafe Vector2? DrawPosForAddon(AtkUnitBasePtr addon, bool right = false) {
-            if (addon == null) {
+        internal static Vector2? DrawPosForAddon(AtkUnitBasePtr addon, bool right = false) {
+            if (addon.IsNull) {
                 return null;
             }
 
@@ -89,7 +89,7 @@ namespace Glamaholic.Ui.Helpers {
         internal static Guid? DrawFolderMenuItems(List<TreeNode> rootNodes) {
             var folders = TreeUtils.GetAllFolders(rootNodes);
 
-            if (ImGui.MenuItem("Root (No Folder)"))
+            if (ImGui.MenuItem("最上層（不放資料夾）"))
                 return Guid.Empty;
 
             if (folders.Count > 0)
@@ -102,7 +102,7 @@ namespace Glamaholic.Ui.Helpers {
 
             if (folders.Count == 0) {
                 ImGui.Separator();
-                ImGui.TextDisabled("No folders created yet.");
+                ImGui.TextDisabled("還沒有資料夾。");
             }
 
             return null;
@@ -112,7 +112,7 @@ namespace Glamaholic.Ui.Helpers {
             Guid? result = null;
             var folders = TreeUtils.GetAllFolders(rootNodes);
 
-            var preview = "Root (No Folder)";
+            var preview = "最上層（不放資料夾）";
             if (currentSelection.HasValue && currentSelection.Value != Guid.Empty) {
                 foreach (var (id, path) in folders) {
                     if (id == currentSelection.Value) {
@@ -123,7 +123,7 @@ namespace Glamaholic.Ui.Helpers {
             }
 
             if (ImGui.BeginCombo(comboId, preview)) {
-                if (ImGui.Selectable("Root (No Folder)", !currentSelection.HasValue || currentSelection.Value == Guid.Empty))
+                if (ImGui.Selectable("最上層（不放資料夾）", !currentSelection.HasValue || currentSelection.Value == Guid.Empty))
                     result = Guid.Empty;
 
                 foreach (var (id, path) in folders) {
@@ -142,7 +142,7 @@ namespace Glamaholic.Ui.Helpers {
         internal static bool DrawCreatePlateMenu(PluginUi ui, Func<Dictionary<PlateSlot, SavedGlamourItem>?> getter, ref string nameInput) {
             var ret = false;
 
-            if (!ImGui.BeginMenu("Create glamour plate")) {
+            if (!ImGui.BeginMenu("建立投影範本")) {
                 return ret;
             }
             
@@ -151,7 +151,7 @@ namespace Glamaholic.Ui.Helpers {
             if (folderChoice.HasValue)
                 _createPlateTargetFolder = folderChoice.Value;
 
-            const string msg = "Select a folder, enter a name and then press then <Enter> to create a new plate, or choose a plate below to overwrite.";
+            const string msg = "選擇資料夾、輸入名稱後按 Enter 建立新投影範本，或在下方按住 Ctrl 點選既有範本以覆蓋。";
             ImGui.PushTextWrapPos(250);
             if (Util.DrawTextInput("current-name", ref nameInput, message: msg, flags: ImGuiInputTextFlags.AutoSelectAll)) {
                 var items = getter();
@@ -187,11 +187,11 @@ namespace Glamaholic.Ui.Helpers {
 
                             if (!ctrl && ImGui.IsItemHovered()) {
                                 ImGui.BeginTooltip();
-                                ImGui.TextUnformatted("Hold Control and click to overwrite.");
+                                ImGui.TextUnformatted("按住 Ctrl 並點擊即可覆蓋。");
                                 ImGui.EndTooltip();
                             }
                         } else if (node is FolderNode folder) {
-                            ImGui.TextUnformatted($"[Folder] {folder.Name}");
+                            ImGui.TextUnformatted($"[資料夾] {folder.Name}");
 
                             if (folder.Children.Count > 0) {
                                 DrawPlateNodes(folder.Children, depth + 1);

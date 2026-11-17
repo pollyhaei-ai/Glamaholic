@@ -4,16 +4,10 @@ using FFXIVClientStructs.FFXIV.Component.GUI;
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Runtime.InteropServices;
-using System.Xml.Linq;
 
 namespace Glamaholic.Ui.Helpers {
     internal class TryOnHelper {
-        private const string PlateName = "Fitting Room";
-
-        // see file footer for information about these offsets
-        private const int TryOnToggleOffset = 0x366; // 870
-        private const int TryOnItemsOffset = 0x370;  // 880
+        private const string PlateName = "試衣間";
 
         private PluginUi Ui { get; }
         private string _nameInput = PlateName;
@@ -29,7 +23,7 @@ namespace Glamaholic.Ui.Helpers {
 
             var tryOnAddon = Service.GameGui.GetAddonByName("Tryon", 1);
             // ReSharper disable once ConditionIsAlwaysTrueOrFalse
-            if (tryOnAddon == null || !tryOnAddon.IsVisible) {
+            if (tryOnAddon.IsNull || !tryOnAddon.IsVisible) {
                 return;
             }
 
@@ -38,7 +32,7 @@ namespace Glamaholic.Ui.Helpers {
         }
 
         private void DrawDropdown() {
-            if (ImGui.Selectable($"Open {Plugin.Name}")) {
+            if (ImGui.Selectable($"開啟 {Plugin.Name}")) {
                 this.Ui.OpenMainInterface();
             }
 
@@ -51,11 +45,11 @@ namespace Glamaholic.Ui.Helpers {
             }
 
             if (Interop.Glamourer.IsAvailable()) {
-                if (ImGui.Selectable("Try on Glamourer")) {
+                if (ImGui.Selectable("用 Glamourer 試穿")) {
                     this.TryOnGlamourer(false);
                 }
 
-                if (ImGui.Selectable("Try on Glamourer - New Emperor")) {
+                if (ImGui.Selectable("用 Glamourer 試穿（填滿空欄）")) {
                     this.TryOnGlamourer(true);
                 }
             }
@@ -63,7 +57,7 @@ namespace Glamaholic.Ui.Helpers {
 
         private void TryOnGlamourer(bool withEmperor) {
             if (Service.ObjectTable.LocalPlayer == null) return;
-            var plate = new SavedPlate("Glamourer") {
+            var plate = new SavedPlate("試穿") {
                 Items = GetTryOnItems(),
                 FillWithNewEmperor = withEmperor
             };
@@ -72,35 +66,74 @@ namespace Glamaholic.Ui.Helpers {
             Interop.Glamourer.TryOn(Service.ObjectTable.LocalPlayer.ObjectIndex, plate);
         }
 
-        private static unsafe Dictionary<PlateSlot, SavedGlamourItem> GetTryOnItems() {
-            var agent = AgentTryon.Instance();
-            var firstItem = (nint) agent + TryOnItemsOffset;
+        private static Dictionary<PlateSlot, SavedGlamourItem> GetTryOnItems() {
+            return ReadTryOnPreview() ?? new Dictionary<PlateSlot, SavedGlamourItem>();
+        }
 
-            var items = new Dictionary<PlateSlot, SavedGlamourItem>();
+        public void TryOnPlate(SavedPlate plate) {
+            var count = 0;
+            foreach (var slot in Enum.GetValues<PlateSlot>()) {
+                if (plate.Items.TryGetValue(slot, out var item) && item.ItemId != 0) {
+                    count++;
+                } else if (plate.FillWithNewEmperor && Util.GetEmperorItemForSlot(slot) != 0) {
+                    count++;
+                }
+            }
 
-            for (var i = 0; i < 12; i++) {
-                var item = (TryOnItem*) (firstItem + i * 28);
-                if (item->Slot == 14 || item->ItemId == 0) {
+            this.Ui.Plugin.Functions.NotifyUnconfirmedTryOnSave(count);
+
+            foreach (var slot in Enum.GetValues<PlateSlot>()) {
+                if (!plate.Items.TryGetValue(slot, out var item) || item.ItemId == 0) {
+                    if (plate.FillWithNewEmperor) {
+                        uint emperor = Util.GetEmperorItemForSlot(slot);
+                        if (emperor != 0) {
+                            this.Ui.Plugin.Functions.TryOn(emperor, 0, 0);
+                        }
+                    }
+
                     continue;
                 }
 
-                int slot = item->Slot > 5 ? item->Slot - 1 : item->Slot;
+                this.Ui.Plugin.Functions.TryOn(item.ItemId, item.Stain1, item.Stain2);
+            }
+        }
 
-                var itemId = item->ItemId;
-                if (item->GlamourId != 0) {
-                    itemId = item->GlamourId;
+        // AgentTryon in yanmucorp FFXIVClientStructs 0.0.6966.0 does not declare the
+        // try-on item array or the save-outfit flag. Reading CharaView.Items uses the
+        // named preview slots instead of the international 0x370 / 0x366 offsets.
+        private static unsafe Dictionary<PlateSlot, SavedGlamourItem>? ReadTryOnPreview() {
+            var agent = AgentTryon.Instance();
+            if (agent == null) {
+                return null;
+            }
+
+            var items = new Dictionary<PlateSlot, SavedGlamourItem>();
+            var viewItems = agent->CharaView.Items;
+            var length = Math.Min(viewItems.Length, 14);
+            for (var i = 0; i < length; i++) {
+                if (i == 5 || i >= 13) {
+                    continue;
                 }
 
-                var stain1 = item->StainPreview1 == 0
-                    ? item->Stain1
-                    : item->StainPreview1;
+                var item = viewItems[i];
+                uint itemId;
+                byte stain1;
+                byte stain2;
+                if (item.GlamourItemId != 0) {
+                    itemId = item.GlamourItemId;
+                    stain1 = item.GlamourStain0Id;
+                    stain2 = item.GlamourStain1Id;
+                } else {
+                    itemId = item.ItemId;
+                    stain1 = item.Stain0Id;
+                    stain2 = item.Stain1Id;
+                }
 
-                var stain2 = item->StainPreview2 == 0
-                    ? item->Stain2
-                    : item->StainPreview2;
+                if (itemId == 0) {
+                    continue;
+                }
 
-                // for some reason, this still accounts for belts in EW
-
+                var slot = i > 5 ? i - 1 : i;
                 items[(PlateSlot) slot] = new SavedGlamourItem {
                     ItemId = itemId % Util.HqItemOffset,
                     Stain1 = stain1,
@@ -110,141 +143,5 @@ namespace Glamaholic.Ui.Helpers {
 
             return items;
         }
-
-        public unsafe void TryOnPlate(SavedPlate plate) {
-            void SetTryOnSave(bool save) {
-                var tryOnAgent = AgentTryon.Instance();
-                if (tryOnAgent != null)
-                    *(byte*) ((nint) tryOnAgent + TryOnToggleOffset) = (byte) (save ? 1 : 0);
-            }
-
-            SetTryOnSave(false);
-            foreach (var slot in Enum.GetValues<PlateSlot>()) {
-                if (!plate.Items.TryGetValue(slot, out var item) || item.ItemId == 0) {
-                    if (plate.FillWithNewEmperor) {
-                        uint emperor = Util.GetEmperorItemForSlot(slot);
-                        if (emperor != 0) {
-                            this.Ui.Plugin.Functions.TryOn(emperor, 0, 0);
-                            SetTryOnSave(true);
-                        }
-                    }
-
-                    continue;
-                }
-
-                this.Ui.Plugin.Functions.TryOn(item.ItemId, item.Stain1, item.Stain2);
-                SetTryOnSave(true);
-            }
-        }
-
-        [StructLayout(LayoutKind.Explicit, Size = 28)]
-        private readonly struct TryOnItem {
-            [FieldOffset(0)]
-            internal readonly byte Slot;
-
-            [FieldOffset(2)]
-            internal readonly byte Stain1;
-
-            [FieldOffset(3)]
-            internal readonly byte Stain2;
-
-            [FieldOffset(4)]
-            internal readonly byte StainPreview1;
-
-            [FieldOffset(5)]
-            internal readonly byte StainPreview2;
-
-            [FieldOffset(12)]
-            internal readonly uint ItemId;
-
-            [FieldOffset(16)]
-            internal readonly uint GlamourId;
-        }
     }
 }
-
-/*
-AgentTryOn offsets:
-
-The script @ IDA/update.py should be used first. If the script is no longer working, then the information below can be used to update the items offset.
-  
-Locate Client::UI::Agent::AgentTryon.TryOn
-
-Follow the call which passes an agent as the first argument and all original arguments afterward:
-    agent = Client::UI::Agent::AgentModule_GetAgentByInternalId(v14, 0x9BLL);
-    v16 = agent;
-    if ( !agent )
-        return 0;
-    if ( (*(*agent + 48LL))(agent) && *(v16 + 1752) == 0xE0000000 )
-        *(v16 + 856) = this;
-    else
-        sub_140A9E880(v16, this);
-    sub_140A9EDF0(v16, a2, a3, a4, a5, a6); // <--- this function is responsible for updating TryOn items
-
-You should find a block which iterates the item array:
-    if ( !*(a1 + 870) )
-    {
-        v13 = 0;
-        v14 = a1 + 880; // <-- 880 is the array base
-        while ( !*(v14 + 12) || *v14 >= 2u )
-        {
-        ++v13;
-        v14 += 28LL; // <- 28 is the element size
-        if ( v13 >= 14 ) // 14 is the length of the array
-            goto LABEL_14;
-        }
-        if ( *(a1 + 838) )
-        {
-        *(a1 + 873) = 1;
-        *(a1 + 832) = 1;
-        *(a1 + 838) = 0;
-        }
-    LABEL_14:
-         sub_140A9F0E0(a1);
-    }
-*/
-
-/*
-AgentTryOn "Save/Delete Outfit"
-
-The script @ IDA/update.py should be used first. If the script is no longer working, then the information below can be used to update the toggle offset.
-
-Client::UI::Agent::AgentTryon_ReceiveEvent
---
-case 0x11u:
-   v38 = 0;
-   if ( *(a1 + 862) ) // <-- cmp [rbx+35Eh], bpl (862 is offset)
-   {
-     v49 = *(a1 + 16);
-     v50 = (*(*v49 + 48LL))(v49, *v49, &_ImageBase);
-     AddonText = Client::UI::Misc::RaptureTextModule_GetAddonText(v50, 0x96Eu);
-     v52 = (*(*v49 + 64LL))(v49);
-     *(a1 + 852) = Client::UI::RaptureAtkModule_OpenYesNo(
-                     v52,
-                     AddonText,
-                     qword_142623A18,
-                     qword_142623A20,
-                     a1,
-                     2LL,
-                     0,
-                     *(a1 + 32),
-                     4,
-                     0LL,
-                     0LL,
-                     0,
-                     0LL,
-                     0,
-                     1u,
-                     0,
-                     0,
-                     0,
-                     -1,
-                     0,
-                     0,
-                     0);
-   }
-   else
-   {
-     *(a1 + 862) = 1; // <-- (862 is offset)
-   }
- */

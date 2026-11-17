@@ -1,8 +1,10 @@
 name: Glamaholic
 author: Anna, Caitlyn
 description: |
-  Create and save as many glamour plates as you want. Activate up to 15 of them
-  at once at the Glamour Dresser. Supports exporting and importing plates for
-  easy sharing.
-punchline: Save and swap your glamour plates.
-repo_url: https://github.com/caitlyn-gg/Glamaholic
+  台灣伺服器 API 13 移植（1.15.2-tw）。可保存任意數量的投影範本，
+  並在投影台一次套用最多 15 套。支援匯出與匯入。
+  原作者 Anna（https://git.anna.lgbt/anna/Glamaholic），
+  目前維護者 Caitlyn（https://github.com/caitlyn-gg/Glamaholic）。
+  本移植不主張原作著作權。
+punchline: 保存並切換投影範本。（1.15.2-tw）
+repo_url: https://github.com/pollyhaei-ai/Glamaholic

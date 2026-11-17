@@ -1,6 +1,5 @@
-using Dalamud.Game;
-using Dalamud.Plugin.Services;
 using Lumina.Excel.Sheets;
+using System;
 using Lumina.Extensions;
 using System.Collections.Generic;
 using System.Linq;
@@ -8,8 +7,6 @@ using System.Reflection;
 
 namespace Glamaholic.Ui {
     internal class FilterInfo {
-        private IDataManager Data { get; }
-
         private uint MaxLevel { get; }
         private string Query { get; }
         private HashSet<ClassJob> WantedJobs { get; } = new();
@@ -18,9 +15,7 @@ namespace Glamaholic.Ui {
         private HashSet<uint> ItemIds { get; } = new();
         private HashSet<string> ItemNames { get; } = new();
 
-        internal FilterInfo(IDataManager data, string filter) {
-            this.Data = data;
-
+        internal FilterInfo(string filter) {
             var queryWords = new List<string>();
 
             var quoteType = -1;
@@ -63,8 +58,8 @@ namespace Glamaholic.Ui {
                 }
 
                 if (word.StartsWith("j:")) {
-                    var abbr = word[2..].ToLowerInvariant();
-                    var job = this.Data.GetExcelSheet<ClassJob>()!.FirstOrNull(row => row.Abbreviation.ExtractText().ToLowerInvariant() == abbr);
+                    var abbr = word[2..];
+                    var job = FindJob(abbr);
                     if (job != null) {
                         this.WantedJobs.Add(job.Value);
                     }
@@ -180,7 +175,10 @@ namespace Glamaholic.Ui {
             }
 
             if (this.ItemNames.Count > 0) {
-                var sheet = this.Data.GetExcelSheet<Item>()!;
+                var sheet = GameData.Sheet<Item>();
+                if (sheet == null) {
+                    return false;
+                }
 
                 var names = plate.Items.Values
                     .Select(mirage => sheet.GetRowOrDefault(mirage.ItemId % Util.HqItemOffset))
@@ -198,7 +196,8 @@ namespace Glamaholic.Ui {
             }
 
             foreach (var mirage in plate.Items.Values) {
-                if (!this.Data.GetExcelSheet<Item>()!.TryGetRow(mirage.ItemId % Util.HqItemOffset, out var item)) {
+                var itemSheet = GameData.Sheet<Item>();
+                if (itemSheet == null || !itemSheet.TryGetRow(mirage.ItemId % Util.HqItemOffset, out var item)) {
                     continue;
                 }
 
@@ -221,10 +220,32 @@ namespace Glamaholic.Ui {
             return true;
         }
 
+        private ClassJob? FindJob(string query) {
+            foreach (var sheet in new[] { GameData.Sheet<ClassJob>(), GameData.EnglishSheet<ClassJob>() }) {
+                if (sheet == null) {
+                    continue;
+                }
+
+                var job = sheet.FirstOrNull(row =>
+                    row.Abbreviation.ExtractText().Equals(query, StringComparison.OrdinalIgnoreCase)
+                    || row.Name.ExtractText().Equals(query, StringComparison.OrdinalIgnoreCase));
+                if (job != null) {
+                    return job.Value;
+                }
+            }
+
+            return null;
+        }
+
         private bool CanWear(ClassJobCategory category, ClassJob classJob) {
-            // get english version
-            var job = this.Data.GetExcelSheet<ClassJob>(ClientLanguage.English)!.GetRow(classJob.RowId)!;
-            var getter = category.GetType().GetProperty(job.Abbreviation.ExtractText(), BindingFlags.Public | BindingFlags.Instance);
+            // ClassJobCategory columns are the English abbreviations (PLD, WAR, ...).
+            var job = GameData.EnglishSheet<ClassJob>()?.GetRowOrDefault(classJob.RowId);
+            var abbreviation = job?.Abbreviation.ExtractText();
+            if (string.IsNullOrEmpty(abbreviation)) {
+                abbreviation = classJob.Abbreviation.ExtractText();
+            }
+
+            var getter = category.GetType().GetProperty(abbreviation, BindingFlags.Public | BindingFlags.Instance);
             if (getter == null) {
                 return false;
             }

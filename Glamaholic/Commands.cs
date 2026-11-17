@@ -9,7 +9,7 @@ namespace Glamaholic {
             this.Plugin = plugin;
 
             Service.CommandManager.AddHandler("/glamaholic", new CommandInfo(this.OnCommand) {
-                HelpMessage = $"Toggle visibility of the {Plugin.Name} window",
+                HelpMessage = $"顯示或隱藏 {Plugin.Name} 視窗",
             });
         }
 

@@ -1,63 +1,25 @@
-# Glamaholic
+# Glamaholic（台灣伺服器 API 13 移植）
 
-## How to use Glamaholic
+版本 **1.15.2-tw**。顯示名稱維持 Glamaholic，以免和「投影台整理助手」（DresserAnalyze）混淆。內部名稱仍是 `Glamaholic`，指令仍是 `/glamaholic`。
 
-Thank you for installing Glamaholic! This plugin can act as your home for
-glamours, since you can store as many as you would like in it. To get started,
-try reading the section called "Adding glamour plates". Keep in mind that you'll
-need to be editing your plates at the Glamour Dresser to be able to copy those
-plates into the plugin or apply new plates.
+本倉庫移植自 [caitlyn-gg/Glamaholic](https://github.com/caitlyn-gg/Glamaholic)（與 goatcorp D17 stable 的 `7ba1ae37416b30252c89cdcd019a3cf2f5b87e88` 相同）。原作者是 [Anna](https://git.anna.lgbt/anna/Glamaholic)，目前上游維護者是 Caitlyn。授權為 EUPL-1.2，見 `LICENCE`。本移植不主張原作著作權。
 
----
+針對 XIVTCLauncher 與 yanmucorp Dalamud API 13（`Dalamud.NET.Sdk` 13.1.0、`net9.0-windows7.0`）。請用 yanmucorp Dalamud `13.0.0.16`（release `26-10-03-01`）組建，不要用 goatcorp 的國際服 Dalamud。介面為繁體中文。Dalamud 介面語言 `tw` 對應 zh-Hant。物品、染色、職業與裝備部位名稱在遊戲中從 Lumina 資料表讀取，優先 `ChineseTraditional`，其次 yanmucorp 的 `TraditionalChinese`。
 
-## Adding glamour plates
+## 安裝
 
-- From the main Glamaholic window, click "Plates" and then "New" to create an
-  empty glamour plate to edit from scratch.
+把發行壓縮檔裡的 `Glamaholic` 資料夾放到：
 
-- From the main Glamaholic window, click "Plates", hover over "Import", paste
-  a shared plate, then press Enter to import a shared plate.
+`%AppData%\FFXIVSimpleLauncher\Dalamud\Config\devPlugins\Glamaholic\`
 
-- Click on the Glamaholic menu at the top left of the Glamour Plate Creation
-  window, then hover over "Create glamour plate" to import plates from the game.
+資料夾內需要有 `Glamaholic.dll` 與 `Glamaholic.json`。此版本沒有上游附帶的官方圖示，因此壓縮檔不含 `images/icon.png`。
 
-- Open the Examine window a character, click the "Glamaholic" menu, then click
-  "Create glamour plate" to create a glamour plate from someone else's outfit.
+## 遊戲內測試風險
 
----
+此環境無法啟動台灣客戶端，下列行為尚未在遊戲中驗證：
 
-## Finding items that share a model
-
-You can search for items that share the same model as another item by either
-middle-clicking (click with mouse wheel) or holding Control and left-clicking on
-any item name or item icon. This will open a window listing items with the same
-model where you can link or try them on.
-
----
-
-## Advanced search
-
-The plate search box can be used to search for more than just plate names. Try
-the options below.
-
-- j:job can be used to search for a job by its abbreviation. Example: j:pld
-
-- lvl:maxLevel can be used to search for plates equippable up to a specific
-  level. Example: lvl:1
-
-- t:tag can be used to search by tag.
-
-- !t:tag can be used to exclude tags.
-
-- id:itemId can be used to search for plates with the given item ID.
-
-- i:itemName can be used to search for plates with the given item name. Example:
-  i:skallic
-
----
-
-## Attribution & Updating
-
-This plugin was originally developed by Anna [here](https://git.anna.lgbt/anna/Glamaholic) ([Ko-fi](https://ko-fi.com/lojewalo)).
-
-This repository is a continuation of their efforts to keep the plugin up to date. If you would like to contribute to updating this plugin, please create a PR or open an issue. Most information that is prone to change is being moved into one location within the project and documented.
+- 投影台複製與套用使用 yanmucorp `FFXIVClientStructs` 0.0.6966.0 的 `AgentMiragePrismMiragePlate`、`AgentMiragePrismPrismBox` 與 `Cabinet`。函式特徵碼若與你的客戶端不符，套用會中止並顯示錯誤，不會猜測記憶體位置。
+- 收藏櫃來源改查 `Cabinet` 資料表與 `IsItemInCabinet`，不再掃描未確認的 `GetCabinetItemId` 特徵碼。
+- 染色道具編號來自 `StainTransient`。此 API 的 `Stain` 表沒有物品欄。
+- `AgentTryon` 沒有已確認的「保存外觀」欄位或試穿物品陣列。試穿只呼叫 `AgentTryon.TryOn`。整套試穿可能只留下最後一件，需先在遊戲試衣間打開保存外觀。從試衣間建立範本時，讀的是 `CharaView.Items`，欄位順序仍需在遊戲中確認。
+- 沒有 Glamourer 時，Glamourer 相關功能會停用，不應阻止外掛載入。Eorzea Collection 匯入仍用英文站點名稱對照物品編號。

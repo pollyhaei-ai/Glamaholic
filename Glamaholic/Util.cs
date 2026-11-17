@@ -15,8 +15,8 @@ namespace Glamaholic {
         internal const uint HqItemOffset = 1_000_000; // The XIV code uses 500,000 but I'll trust this
         internal const uint ItemModifierMod = 500_000;
 
-        private static unsafe bool IsOpen(AtkUnitBasePtr addon) {
-            return addon != null && addon.IsVisible;
+        private static bool IsOpen(AtkUnitBasePtr addon) {
+            return !addon.IsNull && addon.IsVisible;
         }
 
         private static unsafe bool IsOpen(IGameGui gui, string name) {
@@ -32,7 +32,7 @@ namespace Glamaholic {
             return plateOpen && (boxOpen || armoireOpen);
         }
 
-        internal static bool DrawTextInput(string id, ref string input, int max = 512, string message = "Press Enter to save.", ImGuiInputTextFlags flags = ImGuiInputTextFlags.None) {
+        internal static bool DrawTextInput(string id, ref string input, int max = 512, string message = "按 Enter 儲存。", ImGuiInputTextFlags flags = ImGuiInputTextFlags.None) {
             ImGui.SetNextItemWidth(-1);
             var ret = ImGui.InputText($"##{id}", ref input, max, ImGuiInputTextFlags.EnterReturnsTrue | flags);
 
@@ -144,6 +144,16 @@ namespace Glamaholic {
             };
         }
 
+        internal static string EmperorFillTooltip(bool forToggle) {
+            var name = GameData.Sheet<Item>()?.GetRowOrDefault(10032)?.Name.ExtractText();
+            var series = string.IsNullOrEmpty(name) ? "各部位對應的預設物品" : $"「{name}」同一系列的官方物品";
+            if (!forToggle) {
+                return $"用{series}填滿空欄。";
+            }
+
+            return $"不會改寫投影範本本身。\n\n啟用後，試穿或套用到投影台時，空欄會填入{series}。";
+        }
+
         internal static uint GetEmperorItemForSlot(PlateSlot slot) {
             switch (slot) {
                 case PlateSlot.Head:
@@ -180,14 +190,23 @@ namespace Glamaholic {
 
         // https://github.com/ufx/GarlandTools/blob/5b2ec54dc792175a1d565fddb6c6b975b9a9ff64/Garland.Data/Hacks.cs#L89
         internal static bool IsItemSkipped(Item item) {
-            var name = item.Name.ExtractText();
-            return item.RowId switch {
-                // Dated Radz-at-Han Coin
-                17557 => false,
-                // Wrapped Present (no icon)
-                22357 => true,
-                _ => name.Length == 0 || name.StartsWith("Dated"),
-            };
+            if (item.RowId == 17557) {
+                return false;
+            }
+
+            if (item.RowId == 22357) {
+                return true;
+            }
+
+            if (item.Name.ExtractText().Length == 0) {
+                return true;
+            }
+
+            // "Dated …" is the English sheet prefix for retired event items. The check stays on
+            // the English row so the filter does not depend on inventing a Chinese prefix.
+            var english = GameData.EnglishSheet<Item>()?.GetRowOrDefault(item.RowId);
+            var englishName = english?.Name.ExtractText() ?? string.Empty;
+            return englishName.StartsWith("Dated", StringComparison.Ordinal);
         }
 
         internal static void TextIcon(FontAwesomeIcon icon) {
